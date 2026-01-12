@@ -385,16 +385,19 @@ class MainWindow(QMainWindow):
         left_layout.addWidget(self.lbl_t2)
         left_layout.addStretch()
 
-        # Load T1 + 左右切換
+        # Load All + Load T1 + 左右切換
+        btn_load_all = QPushButton("Load All (T1/T2/CT/FT/MN)")
         btn_load_t1 = QPushButton("Load T1 folder")
         btn_prev = QPushButton("←")
         btn_next = QPushButton("→")
 
+        btn_load_all.clicked.connect(self.load_all_folders)
         btn_load_t1.clicked.connect(self.load_t1_folder)
         btn_prev.clicked.connect(self.prev_img)
         btn_next.clicked.connect(self.next_img)
 
         h1 = QHBoxLayout()
+        h1.addWidget(btn_load_all)
         h1.addWidget(btn_load_t1)
         h1.addStretch()
         h1.addWidget(btn_prev)
@@ -527,6 +530,103 @@ class MainWindow(QMainWindow):
             self.spin_idx.setValue(0)
             self.update_spin_range()
             self.update_base_images()
+
+    def load_all_folders(self):
+        """一次載入包含 T1/T2/CT/FT/MN 子資料夾的父資料夾"""
+        parent_folder = QFileDialog.getExistingDirectory(self, "Select Parent Folder (containing T1/T2/CT/FT/MN)")
+        if not parent_folder:
+            return
+
+        # 預期的子資料夾名稱
+        expected = {
+            "T1": None,
+            "T2": None,
+            "CT": None,
+            "FT": None,
+            "MN": None,
+        }
+
+        # 檢查是否存在這些子資料夾
+        for name in expected.keys():
+            path = os.path.join(parent_folder, name)
+            if os.path.isdir(path):
+                expected[name] = path
+
+        # 顯示找到哪些資料夾
+        found = [k for k, v in expected.items() if v is not None]
+        missing = [k for k, v in expected.items() if v is None]
+
+        if not found:
+            QMessageBox.warning(
+                self,
+                "找不到子資料夾",
+                f"在 {parent_folder} 中找不到 T1/T2/CT/FT/MN 任何子資料夾。\n"
+                "請確認資料夾結構正確。"
+            )
+            return
+
+        # 載入 T1
+        if expected["T1"]:
+            self.t1_images = self.load_folder_images(expected["T1"])
+
+        # 載入 T2
+        if expected["T2"]:
+            self.t2_images = self.load_folder_images(expected["T2"])
+
+        # 載入 CT mask
+        if expected["CT"]:
+            files = self.load_folder_images(expected["CT"])
+            masks = []
+            for path in files:
+                img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+                if img is None:
+                    continue
+                mask_bin = (img > 127).astype(np.uint8)
+                masks.append(mask_bin)
+            self.gt_masks["CT"] = masks
+            self.pred_masks["CT"] = []
+            self.dice_scores["CT"] = []
+
+        # 載入 FT mask
+        if expected["FT"]:
+            files = self.load_folder_images(expected["FT"])
+            masks = []
+            for path in files:
+                img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+                if img is None:
+                    continue
+                mask_bin = (img > 127).astype(np.uint8)
+                masks.append(mask_bin)
+            self.gt_masks["FT"] = masks
+            self.pred_masks["FT"] = []
+            self.dice_scores["FT"] = []
+
+        # 載入 MN mask
+        if expected["MN"]:
+            files = self.load_folder_images(expected["MN"])
+            masks = []
+            for path in files:
+                img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+                if img is None:
+                    continue
+                mask_bin = (img > 127).astype(np.uint8)
+                masks.append(mask_bin)
+            self.gt_masks["MN"] = masks
+            self.pred_masks["MN"] = []
+            self.dice_scores["MN"] = []
+
+        # 重置顯示
+        self.idx = 0
+        self.spin_idx.setValue(0)
+        self.show_pred = False
+        self.update_spin_range()
+        self.update_base_images()
+
+        # 顯示載入結果
+        msg = f"成功載入：{', '.join(found)}"
+        if missing:
+            msg += f"\n\n未找到：{', '.join(missing)}"
+        QMessageBox.information(self, "載入完成", msg)
 
     # ---------------- 載入 mask 資料夾 ----------------
     def load_mask_folder(self, kind: str):
